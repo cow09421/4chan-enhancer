@@ -97,8 +97,13 @@ function openLightbox(images, startIndex) {
         return b;
     };
 
-    const closeBtn = makeBtn('✕ 關閉', `
+    const closeBtn = makeBtn('↩ 返回網格', `
         position:absolute;top:20px;right:20px;
+        padding:10px 20px;background:#1565c0;color:#fff;
+        border:none;border-radius:4px;cursor:pointer;font-weight:bold;
+    `);
+    const closeAllBtn = makeBtn('✕ 關閉全部', `
+        position:absolute;top:20px;right:160px;
         padding:10px 20px;background:#d32f2f;color:#fff;
         border:none;border-radius:4px;cursor:pointer;font-weight:bold;
     `);
@@ -132,19 +137,25 @@ function openLightbox(images, startIndex) {
         document.body.style.overflow = '';
         document.removeEventListener('keydown', lbKeyHandler);
     };
+    const closeAll = () => {
+        close();
+        closeGrid();
+    };
     const lbKeyHandler = (e) => {
         if (e.key === 'ArrowLeft')  { currentIndex = (currentIndex - 1 + images.length) % images.length; updateCounter(); }
         if (e.key === 'ArrowRight') { currentIndex = (currentIndex + 1) % images.length; updateCounter(); }
-        if (e.key === 'Escape') close();
+        if (e.key === 'Escape') close();       // Escape = 返回網格（只關燈箱）
+        if (e.key === 'q' || e.key === 'Q') closeAll();  // Q = 關閉全部
     };
 
     closeBtn.addEventListener('click', close);
+    closeAllBtn.addEventListener('click', closeAll);
     prevBtn.addEventListener('click', () => { currentIndex = (currentIndex - 1 + images.length) % images.length; updateCounter(); });
     nextBtn.addEventListener('click', () => { currentIndex = (currentIndex + 1) % images.length; updateCounter(); });
     lightbox.addEventListener('click', (e) => { if (e.target === lightbox) close(); });
     document.addEventListener('keydown', lbKeyHandler);
 
-    lightbox.append(closeBtn, prevBtn, nextBtn, img, counter);
+    lightbox.append(closeBtn, closeAllBtn, prevBtn, nextBtn, img, counter);
     document.body.appendChild(lightbox);
     document.body.style.overflow = 'hidden';
 }
@@ -228,8 +239,6 @@ function renderPage(pageIndex) {
 
         card.append(wrapper, label);
         card.addEventListener('click', () => {
-            // 先關閉網格，再開燈箱（傳入全部圖片，定位到全局索引）
-            closeGrid();
             openLightbox(allImages, globalIndex);
         });
 
