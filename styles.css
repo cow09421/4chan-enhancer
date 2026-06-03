@@ -1,0 +1,39 @@
+#grid-pager {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(10, 10, 10, 0.95);
+    backdrop-filter: blur(4px);
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px 0 4px;
+}
+
+/* 媒體類型徽章 */
+.grid-media-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-weight: bold;
+    pointer-events: none;
+}
+
+/* 卡片 wrapper 相對定位（讓徽章能絕對定位） */
+#custom-grid .grid-img-wrapper {
+    position: relative;
+}
+
+/* WEBM video 樣式 */
+#custom-grid .grid-img-wrapper video {
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+}

@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "4chan 自訂圖庫增強版",
+  "version": "1.0",
+  "description": "網格檢視、輪播、展開全部圖片",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://boards.4chan.org/*",
+    "https://boards.4channel.org/*",
+    "https://i.4cdn.org/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.4chan.org/*/thread/*",
+        "https://boards.4channel.org/*/thread/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ]
+}
