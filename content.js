@@ -73,6 +73,144 @@ async function fetchThreadImages() {
     return images;
 }
 
+const VIDEO_LOAD_TIMEOUT_MS = 8000;
+const VIDEO_RETRY_BASE_DELAY_MS = 1500;
+const VIDEO_RETRY_MAX_DELAY_MS = 15000;
+const videoLoadQueue = [];
+let activeVideoJob = null;
+
+function getRetryUrl(url, attempt) {
+    if (attempt === 0) return url;
+
+    const retryUrl = new URL(url, window.location.href);
+    retryUrl.searchParams.set('_grid_retry', `${Date.now()}_${attempt}`);
+    return retryUrl.toString();
+}
+
+function processVideoLoadQueue() {
+    if (activeVideoJob) return;
+
+    while (videoLoadQueue.length) {
+        const job = videoLoadQueue.shift();
+        if (!job.video.isConnected) continue;
+
+        activeVideoJob = job;
+        job.load();
+        return;
+    }
+}
+
+function finishVideoJob(job) {
+    if (activeVideoJob !== job) return;
+
+    activeVideoJob = null;
+    setTimeout(processVideoLoadQueue, 0);
+}
+
+function attachVideoRetry(video, url, statusEl) {
+    let attempt = 0;
+    let loadTimer = null;
+    let retryTimer = null;
+    let loaded = false;
+
+    const clearTimers = () => {
+        if (loadTimer) clearTimeout(loadTimer);
+        if (retryTimer) clearTimeout(retryTimer);
+        loadTimer = null;
+        retryTimer = null;
+    };
+
+    const setStatus = (message, visible = true) => {
+        if (!statusEl) return;
+        statusEl.textContent = message;
+        statusEl.style.display = visible ? 'block' : 'none';
+    };
+
+    const loadVideo = () => {
+        if (!video.isConnected) {
+            finishVideoJob(job);
+            return;
+        }
+
+        clearTimers();
+        setStatus(attempt === 0 ? '載入中...' : `重試中，第 ${attempt} 次`);
+
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        video.src = getRetryUrl(url, attempt);
+        video.load();
+
+        const playPromise = video.play();
+        if (playPromise) playPromise.catch(() => {});
+
+        loadTimer = setTimeout(() => scheduleRetry('timeout'), VIDEO_LOAD_TIMEOUT_MS);
+    };
+
+    const scheduleRetry = () => {
+        if (loaded || activeVideoJob !== job) return;
+        if (!video.isConnected) {
+            finishVideoJob(job);
+            return;
+        }
+
+        clearTimers();
+
+        attempt += 1;
+        const retryDelay = Math.min(
+            VIDEO_RETRY_BASE_DELAY_MS * attempt,
+            VIDEO_RETRY_MAX_DELAY_MS
+        );
+
+        setStatus(`載入失敗，${Math.round(retryDelay / 1000)} 秒後重試（第 ${attempt} 次）`);
+        retryTimer = setTimeout(loadVideo, retryDelay);
+    };
+
+    const markLoaded = () => {
+        if (loaded) return;
+
+        loaded = true;
+        clearTimers();
+        setStatus('', false);
+        finishVideoJob(job);
+    };
+
+    video.addEventListener('loadeddata', markLoaded);
+    video.addEventListener('canplay', markLoaded);
+    video.addEventListener('playing', markLoaded);
+    video.addEventListener('error', scheduleRetry);
+    video.addEventListener('stalled', () => {
+        if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) scheduleRetry();
+    });
+
+    const job = {
+        video,
+        load: loadVideo
+    };
+
+    setStatus('等待載入...');
+    videoLoadQueue.push(job);
+    setTimeout(processVideoLoadQueue, 0);
+}
+
+function createVideoMedia(imgData, options = {}) {
+    const video = document.createElement('video');
+    video.autoplay = options.autoplay !== false;
+    video.muted = options.muted !== false;
+    video.loop = options.loop !== false;
+    video.playsInline = true;
+    video.preload = 'auto';
+    if (options.controls) video.controls = true;
+    if (options.className) video.className = options.className;
+    if (options.style) video.style.cssText = options.style;
+
+    const status = document.createElement('span');
+    status.className = 'grid-video-status';
+
+    attachVideoRetry(video, imgData.url, status);
+    return { video, status };
+}
+
 // ── 燈箱 ─────────────────────────────────────────────────
 function openLightbox(images, startIndex) {
     if (!images.length) return;
@@ -86,9 +224,12 @@ function openLightbox(images, startIndex) {
 
     let currentIndex = startIndex;
 
-    const img = document.createElement('img');
-    img.src = images[currentIndex].url;
-    img.style.cssText = 'max-width:90vw;max-height:90vh;object-fit:contain;';
+    const mediaSlot = document.createElement('div');
+    mediaSlot.className = 'lightbox-media-slot';
+    mediaSlot.style.cssText = `
+        position:relative;display:flex;align-items:center;justify-content:center;
+        max-width:90vw;max-height:90vh;
+    `;
 
     const makeBtn = (text, css) => {
         const b = document.createElement('button');
@@ -125,10 +266,26 @@ function openLightbox(images, startIndex) {
     `;
     const updateCounter = () => {
         counter.textContent = `${currentIndex + 1} / ${images.length}`;
-        img.src = images[currentIndex].url;
+        const current = images[currentIndex];
+        mediaSlot.innerHTML = '';
+
+        if (current.type === 'webm') {
+            const { video, status } = createVideoMedia(current, {
+                controls: true,
+                style: 'max-width:90vw;max-height:90vh;object-fit:contain;background:#000;'
+            });
+            mediaSlot.append(video, status);
+        } else {
+            const img = document.createElement('img');
+            img.src = current.url;
+            img.alt = current.filename;
+            img.style.cssText = 'max-width:90vw;max-height:90vh;object-fit:contain;';
+            mediaSlot.appendChild(img);
+        }
+
         // 預載下一張
         const next = images[(currentIndex + 1) % images.length];
-        if (next) new Image().src = next.url;
+        if (next && next.type !== 'webm') new Image().src = next.url;
     };
     updateCounter();
 
@@ -155,7 +312,7 @@ function openLightbox(images, startIndex) {
     lightbox.addEventListener('click', (e) => { if (e.target === lightbox) close(); });
     document.addEventListener('keydown', lbKeyHandler);
 
-    lightbox.append(closeBtn, closeAllBtn, prevBtn, nextBtn, img, counter);
+    lightbox.append(closeBtn, closeAllBtn, prevBtn, nextBtn, mediaSlot, counter);
     document.body.appendChild(lightbox);
     document.body.style.overflow = 'hidden';
 }
@@ -203,12 +360,8 @@ function renderPage(pageIndex) {
         wrapper.className = 'grid-img-wrapper';
 
         if (imgData.type === 'webm') {
-            const video = document.createElement('video');
-            video.src = imgData.url;
-            video.autoplay = true;
-            video.muted = true;
-            video.loop = true;
-            wrapper.appendChild(video);
+            const { video, status } = createVideoMedia(imgData);
+            wrapper.append(video, status);
 
             const badge = document.createElement('span');
             badge.className = 'grid-media-badge';
